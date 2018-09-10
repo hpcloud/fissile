@@ -163,7 +163,7 @@ func (m *RoleManifest) resolveRoleManifest(releases []*Release, grapher util.Mod
 			}
 		}
 
-		instanceGroup.calculateRoleConfigurationTemplates()
+		instanceGroup.calculateTemplates()
 
 		// Validate that specified colocated containers are configured and of the
 		// correct type
@@ -557,12 +557,12 @@ func validateVariableUsage(roleManifest *RoleManifest) validation.ErrorList {
 	// variables. Remove each found from the set of unused
 	// configs.
 
-	for _, role := range roleManifest.InstanceGroups {
-		for _, jobReference := range role.JobReferences {
+	for _, ig := range roleManifest.InstanceGroups {
+		for _, jobReference := range ig.JobReferences {
 			for _, property := range jobReference.Properties {
 				propertyName := fmt.Sprintf("properties.%s", property.Name)
 
-				if template, ok := getTemplate(role.Configuration.Templates, propertyName); ok {
+				if template, ok := getTemplate(ig.CalculatedTemplates, propertyName); ok {
 					varsInTemplate, err := parseTemplate(fmt.Sprintf("%v", template))
 					if err != nil {
 						// Ignore bad template, cannot have sensible
@@ -642,8 +642,9 @@ func validateTemplateUsage(roleManifest *RoleManifest) validation.ErrorList {
 		for _, jobReference := range instanceGroup.JobReferences {
 			for _, property := range jobReference.Properties {
 				propertyName := fmt.Sprintf("properties.%s", property.Name)
+				// TODO skip for bosh_containerization?
 
-				if template, ok := getTemplate(instanceGroup.Configuration.Templates, propertyName); ok {
+				if template, ok := getTemplate(jobReference.GetTemplates(), propertyName); ok {
 					varsInTemplate, err := parseTemplate(fmt.Sprintf("%v", template))
 					if err != nil {
 						continue
@@ -705,16 +706,18 @@ func validateTemplateKeys(roleManifest *RoleManifest) validation.ErrorList {
 	allErrs := validation.ErrorList{}
 
 	for _, instanceGroup := range roleManifest.InstanceGroups {
-		if instanceGroup.Configuration == nil {
+		if instanceGroup.CalculatedTemplates == nil {
 			continue
 		}
 
-		for _, templateDef := range instanceGroup.Configuration.Templates {
-			if _, ok := templateDef.Key.(string); !ok {
-				allErrs = append(allErrs, validation.Invalid(
-					fmt.Sprintf("template key for instance group %s", instanceGroup.Name),
-					templateDef.Key,
-					"Template key must be a string"))
+		for _, job := range instanceGroup.JobReferences {
+			for _, templateDef := range job.GetTemplates() {
+				if _, ok := templateDef.Key.(string); !ok {
+					allErrs = append(allErrs, validation.Invalid(
+						fmt.Sprintf("template key for instance group %s", instanceGroup.Name),
+						templateDef.Key,
+						"Template key must be a string"))
+				}
 			}
 		}
 	}

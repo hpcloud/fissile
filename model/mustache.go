@@ -38,8 +38,7 @@ func (r *InstanceGroup) GetVariablesForRole() (Variables, error) {
 		for _, property := range jobReference.Properties {
 			propertyName := fmt.Sprintf("properties.%s", property.Name)
 
-			for _, templateDef := range r.Configuration.Templates {
-
+			for _, templateDef := range jobReference.GetTemplates() {
 				templatePropName := templateDef.Key.(string)
 				template := templateDef.Value.(string)
 

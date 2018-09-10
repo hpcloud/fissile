@@ -56,7 +56,8 @@ type JobExposedPort struct {
 
 // JobBoshContainerization describes settings specific to containerization
 type JobBoshContainerization struct {
-	Ports []JobExposedPort `yaml:"ports"`
+	Ports         []JobExposedPort `yaml:"ports"`
+	Configuration *Configuration   `yaml:"configuration"`
 }
 
 // JobContainerProperties describes job configuration

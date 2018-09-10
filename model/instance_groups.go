@@ -47,6 +47,7 @@ type InstanceGroup struct {
 	Run                 *RoleRun        `yaml:"run"`
 	Tags                []RoleTag       `yaml:"tags"`
 	ColocatedContainers []string        `yaml:"colocated_containers,omitempty"`
+	CalculatedTemplates yaml.MapSlice   `yaml:"-"`
 
 	roleManifest *RoleManifest
 }
@@ -273,15 +274,15 @@ func (g *InstanceGroup) GetScriptSignatures() (string, error) {
 func (g *InstanceGroup) GetTemplateSignatures() (string, error) {
 	hasher := sha1.New()
 
-	i := 0
-	templates := make([]string, len(g.Configuration.Templates))
+	var templates []string
 
-	for _, templateDef := range g.Configuration.Templates {
-		k := templateDef.Key.(string)
-		v := templateDef.Value.(string)
+	for _, job := range g.JobReferences {
+		for _, templateDef := range job.GetTemplates() {
+			k := templateDef.Key.(string)
+			v := templateDef.Value.(string)
 
-		templates[i] = fmt.Sprintf("%s: %s", k, v)
-		i++
+			templates = append(templates, fmt.Sprintf("%s: %s", k, v))
+		}
 	}
 
 	sort.Strings(templates)
@@ -443,7 +444,7 @@ func (g *InstanceGroup) getRoleJobAndPackagesSignature(grapher util.ModelGrapher
 	roleSignature = fmt.Sprintf("%s\n%s", roleSignature, sig)
 
 	// If there are templates, generate signature for them
-	if g.Configuration != nil && g.Configuration.Templates != nil {
+	if g.HasTemplates() {
 		sig, err = g.GetTemplateSignatures()
 		if err != nil {
 			return "", nil, err
@@ -467,20 +468,29 @@ func (g *InstanceGroup) HasTag(tag RoleTag) bool {
 	return false
 }
 
-func (g *InstanceGroup) calculateRoleConfigurationTemplates() {
-	if g.Configuration == nil {
-		g.Configuration = &Configuration{}
+// HasTemplates returns true if any job of this instance groups has templates
+func (g *InstanceGroup) HasTemplates() bool {
+	for _, j := range g.JobReferences {
+		if j.GetTemplates() != nil {
+			return true
+		}
 	}
-	if g.Configuration.Templates == nil {
-		g.Configuration.Templates = yaml.MapSlice{}
+
+	return false
+}
+func (g *InstanceGroup) calculateTemplates() {
+	if g.CalculatedTemplates == nil {
+		g.CalculatedTemplates = yaml.MapSlice{}
 	}
 
 	roleConfigs := yaml.MapSlice{}
-	for _, templateDef := range g.Configuration.Templates {
-		k := templateDef.Key.(string)
-		v := templateDef.Value
+	for _, job := range g.JobReferences {
+		for _, templateDef := range job.GetTemplates() {
+			k := templateDef.Key.(string)
+			v := templateDef.Value
 
-		roleConfigs = append(roleConfigs, yaml.MapItem{Key: k, Value: v})
+			roleConfigs = append(roleConfigs, yaml.MapItem{Key: k, Value: v})
+		}
 	}
 
 	for _, templateDef := range g.roleManifest.Configuration.Templates {
@@ -493,7 +503,7 @@ func (g *InstanceGroup) calculateRoleConfigurationTemplates() {
 		}
 	}
 
-	g.Configuration.Templates = roleConfigs
+	g.CalculatedTemplates = roleConfigs
 }
 
 // LookupJob will find the given job in this role, or nil if not found
@@ -533,6 +543,10 @@ func (g *InstanceGroup) GetColocatedRoles() []*InstanceGroup {
 	}
 
 	return result
+}
+
+func (j *JobReference) GetTemplates() yaml.MapSlice {
+	return j.ContainerProperties.BoshContainerization.Configuration.Templates
 }
 
 // WriteConfigs merges the job's spec with the opinions and returns the result as JSON.
